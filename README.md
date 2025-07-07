@@ -67,9 +67,10 @@ JavaScript (ES6+): Powers all simulation logic, physics, AI, and user interactio
 
 CSS3: Used for styling the UI overlay and control panel.
 
-How to Run Locally
-Clone this repository to your local machine.
+How to Run Locally:
 
-Open the index.html file in any modern web browser.
+1.) Clone this repository to your local machine.
 
-Click the "LAUNCH INCOMING" button to begin the simulation.
+2.) Open the index.html file in any modern web browser.
+
+3.) Click the "LAUNCH INCOMING" button to begin the simulation.
