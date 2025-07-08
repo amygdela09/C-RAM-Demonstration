@@ -1,8 +1,15 @@
-# C-RAM Demonstration
+```
+
+```markdown
+# C-RAM Defense Simulation (v4.0)
 
 An interactive, browser-based simulation of a modern Counter-Rocket, Artillery, and Mortar (C-RAM) weapon system. This project uses HTML5 Canvas and vanilla JavaScript to create a dynamic and visually engaging demonstration of an autonomous air defense battery engaging multiple incoming threats with an advanced, multi-layered AI.
 
-[**Try the Live Demo Here!**](https://amygdela09.github.io/C-RAM-Demonstration/)
+[**Try the Live Demo Here!**](https://example.com) *(<- Replace with your live demo link)*
+
+![C-RAM Simulation Screenshot](https://placehold.co/800x450/0a142a/00ff00?text=C-RAM+Simulation+in+Action)
+
+---
 
 ## Key Features
 
@@ -33,7 +40,7 @@ The core of this simulation is the advanced, centralized AI that controls the C-
 
 The AI's first task is to understand the battlefield.
 * It constantly scans the airspace for all incoming, un-engaged missiles.
-* For each threat, it uses a quadratic formula `(y = y₀ + v₀t + ½at²)` to calculate its **Time to Impact**—the precise moment it will hit the ground.
+* For each threat, it calculates its **Time to Impact**—the precise moment it will hit the ground.
 * It then sorts all hostile targets into a priority list, with the missile that will land the soonest ranked as the **highest priority threat**.
 
 ### 2. Optimal Resource Allocation (Engagement Scoring)
@@ -66,4 +73,4 @@ The AI and turrets operate under a strict set of rules to ensure efficiency and 
 
 1.  Clone this repository to your local machine.
 2.  Open the `index.html` file in any modern web browser.
-3.  Click the "LAUNCH INCOMING" button to begin the simulati
+3.  Click the "LAUNCH INCOMING" button to begin the simulation.
