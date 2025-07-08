@@ -178,8 +178,6 @@
                 const interceptY = target.y + target.velocity.y * interceptTime + 0.5 * gravity * interceptTime**2;
                 let targetAngle = Math.atan2(interceptY - this.y, interceptX - this.x);
                 
-                // ** FIX: Removed the individual hit probability assessment. Turrets now follow orders. **
-                
                 const clampedAngle = Math.max(this.minAngle, Math.min(this.maxAngle, targetAngle));
                 
                 let angleDiff = clampedAngle - this.angle;
@@ -248,19 +246,15 @@
             constructor() {
                 this.radius = 5;
                 const speedX = 4 + Math.random() * 2;
-                this.health = 10;
+                // ** NEW: Reduced missile health **
+                this.health = Math.random() < 0.8 ? 1 : 2; // 80% chance of 1 HP, 20% chance of 2 HP
                 this.targetedBy = null;
                 
                 const initialVy = Math.random() * 1 + 0.5; 
                 this.y = Math.random() * (canvasHeight * 0.2);
 
-                if (Math.random() < 0.5) {
-                    this.x = -this.radius;
-                    this.velocity = { x: speedX, y: initialVy };
-                } else {
-                    this.x = canvasWidth + this.radius;
-                    this.velocity = { x: -speedX, y: initialVy };
-                }
+                this.x = -this.radius;
+                this.velocity = { x: speedX, y: initialVy };
             }
 
             draw() {
@@ -391,7 +385,7 @@
 
             for (const target of availableTargets) {
                 let bestTurret = null;
-                let minEngagementCost = Infinity;
+                let maxEngagementScore = -Infinity;
                 
                 for (const turret of idleTurrets) {
                     if (turret.currentTarget) continue;
@@ -401,10 +395,16 @@
                     if (targetAngle >= turret.minAngle && targetAngle <= turret.maxAngle) {
                         const angleDiff = Math.abs(targetAngle - turret.angle);
                         const timeToAim = angleDiff / turret.rotationSpeed;
-                        const cost = timeToAim;
+                        
+                        const arcCenter = (turret.minAngle + turret.maxAngle) / 2;
+                        const angleFromCenter = Math.abs(targetAngle - arcCenter);
+                        const arcSpan = turret.maxAngle - turret.minAngle;
+                        const centeredness = 1 - (angleFromCenter / (arcSpan / 2));
 
-                        if (cost < minEngagementCost) {
-                            minEngagementCost = cost;
+                        const score = (1 / (timeToAim + 0.1)) + (centeredness * 2);
+
+                        if (score > maxEngagementScore) {
+                            maxEngagementScore = score;
                             bestTurret = turret;
                         }
                     }
