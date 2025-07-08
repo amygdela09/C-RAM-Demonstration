@@ -119,7 +119,7 @@
         const particles = [];
         const turrets = [];
         const effects = []; 
-        const projectileSpeed = 10; 
+        const projectileSpeed = 12; 
         const gravity = 0.03; 
         
         let timeScale = 1;
@@ -148,10 +148,17 @@
             }
 
             update() {
-                if (this.currentTarget && (this.currentTarget.health <= 0 || this.currentTarget.y >= canvasHeight)) {
-                    this.currentTarget.targetedBy = null;
-                    this.currentTarget = null;
-                    this.status = 'STANDBY';
+                // ** NEW: Upgraded Disengagement Logic **
+                if (this.currentTarget) {
+                    const target = this.currentTarget;
+                    const targetAngle = Math.atan2(target.y - this.y, target.x - this.x);
+                    const isOutOfArc = !(targetAngle >= this.minAngle && targetAngle <= this.maxAngle);
+
+                    if (target.health <= 0 || target.y >= this.y || isOutOfArc) {
+                        target.targetedBy = null;
+                        this.currentTarget = null;
+                        this.status = 'STANDBY';
+                    }
                 }
 
                 if (this.currentTarget) {
@@ -167,15 +174,24 @@
                 const dy = target.y - this.y;
                 
                 let interceptTime = Math.hypot(dx, dy) / projectileSpeed;
+                let interceptY = 0;
 
                 for(let i=0; i<5; i++) { 
                     const futureX = target.x + target.velocity.x * interceptTime;
-                    const futureY = target.y + target.velocity.y * interceptTime + 0.5 * gravity * interceptTime**2;
-                    interceptTime = Math.hypot(futureX - this.x, futureY - this.y) / projectileSpeed;
+                    interceptY = target.y + target.velocity.y * interceptTime + 0.5 * gravity * interceptTime**2;
+                    interceptTime = Math.hypot(futureX - this.x, interceptY - this.y) / projectileSpeed;
                 }
                 
+                // ** NEW: Hit Probability Assessment **
+                const minSafeAltitude = canvasHeight * 0.95; 
+                if (interceptY > minSafeAltitude) {
+                    this.currentTarget.targetedBy = null;
+                    this.currentTarget = null;
+                    this.status = 'STANDBY';
+                    return; 
+                }
+
                 const interceptX = target.x + target.velocity.x * interceptTime;
-                const interceptY = target.y + target.velocity.y * interceptTime + 0.5 * gravity * interceptTime**2;
                 let targetAngle = Math.atan2(interceptY - this.y, interceptX - this.x);
                 
                 const clampedAngle = Math.max(this.minAngle, Math.min(this.maxAngle, targetAngle));
@@ -248,16 +264,13 @@
                 this.health = Math.random() < 0.8 ? 1 : 2;
                 this.targetedBy = null;
                 
-                // ** NEW: True Ballistic Trajectory Calculation **
                 this.x = -this.radius;
                 this.y = Math.random() * (canvasHeight * 0.4);
 
-                // Define a target zone far behind the C-RAMs
-                const targetX = canvasWidth * (1.2 + Math.random() * 0.3); // Target is off-screen right
+                const targetX = canvasWidth * (1.2 + Math.random() * 0.3);
                 const targetY = canvasHeight;
 
-                // Calculate initial velocity needed to hit the target zone
-                const flightTime = (150 + Math.random() * 50); // Time in frames
+                const flightTime = (150 + Math.random() * 50);
                 const vx = (targetX - this.x) / flightTime;
                 const vy = (targetY - this.y - 0.5 * gravity * flightTime**2) / flightTime;
 
@@ -538,7 +551,6 @@
                 if(obj.draw) obj.draw();
             });
             
-            // ** NEW: Target cleanup loop now handles ground impacts **
             for (let i = targets.length - 1; i >= 0; i--) {
                 const target = targets[i];
                 if (target.y >= canvasHeight) {
