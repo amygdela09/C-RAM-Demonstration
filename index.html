@@ -139,7 +139,6 @@
                 this.barrelWidth = 4;
                 this.baseRadius = 15;
                 this.angle = -Math.PI / 2;
-                // ** NEW: Increased turret rotation speed **
                 this.rotationSpeed = 0.18;
                 this.range = 2000;
                 this.currentTarget = null;
@@ -247,14 +246,12 @@
             constructor() {
                 this.radius = 5;
                 const speedX = 4 + Math.random() * 2;
-                // ** NEW: Reduced missile health **
-                this.health = Math.random() < 0.8 ? 1 : 2; // 80% chance of 1 HP, 20% chance of 2 HP
+                this.health = Math.random() < 0.8 ? 1 : 2;
                 this.targetedBy = null;
                 
                 const initialVy = Math.random() * 1 + 0.5; 
                 this.y = Math.random() * (canvasHeight * 0.2);
 
-                // ** NEW: All missiles come from the left **
                 this.x = -this.radius;
                 this.velocity = { x: speedX, y: initialVy };
             }
@@ -369,78 +366,60 @@
             }
         }
 
-        // ** NEW: Upgraded Centralized Battle Management System v4.0 **
         function assignTargets() {
-            // Clear any turret that is targeting a destroyed missile
-            turrets.forEach(turret => {
-                if (turret.currentTarget && turret.currentTarget.health <= 0) {
-                    turret.currentTarget = null;
-                    turret.status = 'STANDBY';
-                }
+            const idleTurrets = turrets.filter(t => t.status === 'STANDBY');
+            if (idleTurrets.length === 0) return;
+
+            const availableTargets = targets.filter(t => !t.targetedBy && t.y < canvasHeight);
+            
+            availableTargets.forEach(target => {
+                const a = 0.5 * gravity;
+                const b = target.velocity.y;
+                const c = target.y - canvasHeight;
+                const discriminant = b*b - 4*a*c;
+                target.timeToGround = (discriminant >= 0) ? (-b + Math.sqrt(discriminant)) / (2*a) : Infinity;
             });
 
-            // Create a list of all possible engagements
-            const possibleEngagements = [];
-            
-            // Get all targets that are not yet assigned
-            const availableTargets = targets.filter(t => !t.targetedBy);
+            availableTargets.sort((a, b) => a.timeToGround - b.timeToGround);
 
             for (const target of availableTargets) {
-                for (const turret of turrets) {
-                    // Calculate the intercept point
-                    let interceptTime = Math.hypot(target.x - turret.x, target.y - turret.y) / projectileSpeed;
-                    let interceptY = 0;
-                    for(let i=0; i<3; i++) { // Fewer iterations for faster calculation
-                        const futureX = target.x + target.velocity.x * interceptTime;
-                        futureY = target.y + target.velocity.y * interceptTime + 0.5 * gravity * interceptTime**2;
-                        interceptTime = Math.hypot(futureX - turret.x, futureY - turret.y) / projectileSpeed;
-                    }
+                let bestTurret = null;
+                let maxEngagementScore = -Infinity;
+                
+                for (const turret of idleTurrets) {
+                    if (turret.currentTarget) continue;
                     
-                    // Check if the engagement is viable
-                    if (futureY < turret.y) { // Must be above the turret
-                        const targetAngle = Math.atan2(futureY - turret.y, target.x - turret.x);
-                        if (targetAngle >= turret.minAngle && targetAngle <= turret.maxAngle) {
-                            // Calculate a score for this engagement
-                            const angleDiff = Math.abs(targetAngle - turret.angle);
-                            const timeToAim = angleDiff / turret.rotationSpeed;
-                            const timeToGround = (canvasHeight - target.y) / (target.velocity.y > 0 ? target.velocity.y : 1);
-                            
-                            // Score prioritizes imminent threats and fast aiming
-                            const score = 1000 / (timeToGround + 0.1) + 100 / (timeToAim + 0.1);
-                            
-                            possibleEngagements.push({ turret, target, score });
+                    const targetAngle = Math.atan2(target.y - turret.y, target.x - turret.x);
+                    
+                    if (targetAngle >= turret.minAngle && targetAngle <= turret.maxAngle) {
+                        const angleDiff = Math.abs(targetAngle - turret.angle);
+                        const timeToAim = angleDiff / turret.rotationSpeed;
+                        
+                        const arcCenter = (turret.minAngle + turret.maxAngle) / 2;
+                        const angleFromCenter = Math.abs(targetAngle - arcCenter);
+                        const arcSpan = turret.maxAngle - turret.minAngle;
+                        const centeredness = 1 - (angleFromCenter / (arcSpan / 2));
+
+                        const score = (1 / (timeToAim + 0.1)) + (centeredness * 2);
+
+                        if (score > maxEngagementScore) {
+                            maxEngagementScore = score;
+                            bestTurret = turret;
                         }
                     }
                 }
-            }
 
-            // Sort all possible engagements by the highest score
-            possibleEngagements.sort((a, b) => b.score - a.score);
-
-            // Assign targets based on the sorted list, ensuring no turret or target is assigned twice
-            const assignedTurrets = new Set();
-            const assignedTargets = new Set();
-
-            // First, re-confirm existing assignments if they are still optimal
-            turrets.forEach(turret => {
-                if (turret.currentTarget) {
-                    assignedTurrets.add(turret);
-                    assignedTargets.add(turret.currentTarget);
-                }
-            });
-
-            // Now, assign the best new engagements
-            for (const engagement of possibleEngagements) {
-                if (!assignedTurrets.has(engagement.turret) && !assignedTargets.has(engagement.target)) {
-                    // If a turret is idle, assign it.
-                    if (engagement.turret.status === 'STANDBY') {
-                        engagement.turret.currentTarget = engagement.target;
-                        engagement.target.targetedBy = engagement.turret;
-                        engagement.turret.status = 'TRACKING';
-                        assignedTurrets.add(engagement.turret);
-                        assignedTargets.add(engagement.target);
+                if (bestTurret) {
+                    bestTurret.currentTarget = target;
+                    target.targetedBy = bestTurret;
+                    bestTurret.status = 'TRACKING';
+                    const index = idleTurrets.indexOf(bestTurret);
+                    if (index > -1) {
+                        idleTurrets.splice(index, 1);
                     }
                 }
+                
+                if (idleTurrets.length === 0) break;
             }
         }
 
@@ -549,10 +528,10 @@
                 if(obj.draw) obj.draw();
             });
             
+            // ** NEW: Target cleanup loop now only removes missiles that fly past the screen **
             for (let i = targets.length - 1; i >= 0; i--) {
                 const target = targets[i];
-                if (target.y >= canvasHeight) {
-                    createExplosion(target.x, canvasHeight);
+                if (target.y > canvasHeight + 50) { // Cleanup far off-screen
                     if (target.targetedBy) {
                         target.targetedBy.currentTarget = null;
                     }
