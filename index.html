@@ -152,7 +152,7 @@
                 if (this.currentTarget) {
                     const target = this.currentTarget;
                     const targetAngle = Math.atan2(target.y - this.y, target.x - this.x);
-                    const isOutOfArc = !(targetAngle >= this.minAngle && targetAngle <= this.maxAngle);
+                    const isOutOfArc = target.y >= this.y || target.x < 0 || target.x > canvasWidth;
 
                     if (target.health <= 0 || target.y >= this.y || isOutOfArc) {
                         target.targetedBy = null;
@@ -203,7 +203,7 @@
                 this.angle += Math.max(-this.rotationSpeed, Math.min(this.rotationSpeed, angleDiff)) * timeScale;
 
                 const isAimed = Math.abs(angleDiff) < 0.1;
-                const canEngage = targetAngle === clampedAngle;
+                const canEngage = targetAngle >= this.minAngle && targetAngle <= this.maxAngle;
                 const dist = Math.hypot(dx, dy);
 
                 if (isAimed && canEngage && dist < this.range) {
