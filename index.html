@@ -148,7 +148,7 @@
             }
 
             update() {
-                if (this.currentTarget && (this.currentTarget.health <= 0 || this.currentTarget.y >= this.y)) {
+                if (this.currentTarget && (this.currentTarget.health <= 0 || this.currentTarget.y >= canvasHeight)) {
                     this.currentTarget.targetedBy = null;
                     this.currentTarget = null;
                     this.status = 'STANDBY';
@@ -245,15 +245,23 @@
         class Target {
             constructor() {
                 this.radius = 5;
-                const speedX = 4 + Math.random() * 2;
                 this.health = Math.random() < 0.8 ? 1 : 2;
                 this.targetedBy = null;
                 
-                const initialVy = Math.random() * 1 + 0.5; 
-                this.y = Math.random() * (canvasHeight * 0.2);
-
+                // ** NEW: True Ballistic Trajectory Calculation **
                 this.x = -this.radius;
-                this.velocity = { x: speedX, y: initialVy };
+                this.y = Math.random() * (canvasHeight * 0.4);
+
+                // Define a target zone far behind the C-RAMs
+                const targetX = canvasWidth * (1.2 + Math.random() * 0.3); // Target is off-screen right
+                const targetY = canvasHeight;
+
+                // Calculate initial velocity needed to hit the target zone
+                const flightTime = (150 + Math.random() * 50); // Time in frames
+                const vx = (targetX - this.x) / flightTime;
+                const vy = (targetY - this.y - 0.5 * gravity * flightTime**2) / flightTime;
+
+                this.velocity = { x: vx, y: vy };
             }
 
             draw() {
@@ -370,7 +378,7 @@
             const idleTurrets = turrets.filter(t => t.status === 'STANDBY');
             if (idleTurrets.length === 0) return;
 
-            const availableTargets = targets.filter(t => !t.targetedBy && t.y < canvasHeight);
+            const availableTargets = targets.filter(t => !t.targetedBy);
             
             availableTargets.forEach(target => {
                 const a = 0.5 * gravity;
@@ -424,6 +432,8 @@
         }
 
         function createOrUpdateBackground() {
+            if (canvasWidth <= 0 || canvasHeight <= 0) return;
+
             backgroundCanvas = document.createElement('canvas');
             backgroundCanvas.width = canvasWidth;
             backgroundCanvas.height = canvasHeight;
@@ -528,10 +538,11 @@
                 if(obj.draw) obj.draw();
             });
             
-            // ** NEW: Target cleanup loop now only removes missiles that fly past the screen **
+            // ** NEW: Target cleanup loop now handles ground impacts **
             for (let i = targets.length - 1; i >= 0; i--) {
                 const target = targets[i];
-                if (target.y > canvasHeight + 50) { // Cleanup far off-screen
+                if (target.y >= canvasHeight) {
+                    createExplosion(target.x, canvasHeight);
                     if (target.targetedBy) {
                         target.targetedBy.currentTarget = null;
                     }
