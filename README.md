@@ -2,7 +2,8 @@ C-RAM Demonstration
 
 An interactive, browser-based simulation of a modern Counter-Rocket, Artillery, and Mortar (C-RAM) weapon system. This project uses HTML5 Canvas and vanilla JavaScript to create a dynamic and visually engaging demonstration of an autonomous air defense battery engaging multiple incoming threats with an advanced, multi-layered AI.
 
-Try the Live Demo Here! (<- Replace with your live demo link)
+Try the Live Demo Here! (https://amygdela09.github.io/C-RAM-Demonstration/)
+
 Key Features
 
 This simulation goes beyond a simple game to model several key aspects of a real-world automated defense system.
