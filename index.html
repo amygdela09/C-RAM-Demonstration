@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C-RAM Battery Defense Demonstration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Orbitron', sans-serif;
+            background-color: #000;
+            color: #00ff00;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+        }
+        .top-ui {
+            width: 100%;
+            display: flex;
+            justify-content: flex-end;
+        }
+        .control-panel {
+            pointer-events: all;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background-color: rgba(0, 20, 0, 0.75);
+            padding: 15px 25px;
+            border-radius: 8px;
+            border: 1px solid #00ff00;
+            box-shadow: 0 0 15px #00ff00 inset;
+            margin-bottom: 10px;
+        }
+        .launch-button {
+            background-color: #ff4500;
+            color: #fff;
+            border: 2px solid #ff8c00;
+            padding: 10px 20px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px #ff4500;
+        }
+        .launch-button:hover {
+            background-color: #ff6347;
+            box-shadow: 0 0 20px #ff8c00;
+        }
+        .status-display {
+            font-size: 1.2rem;
+            text-shadow: 0 0 5px #00ff00;
+            display: flex;
+            gap: 20px;
+        }
+        .status-text {
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="simulationCanvas"></canvas>
+
+    <div class="ui-overlay">
+        <div class="top-ui">
+            <div id="success-rate" class="status-display status-text">KILL %: N/A</div>
+        </div>
+        <div class="control-panel">
+            <button id="launchTargetBtn" class="launch-button">LAUNCH INCOMING</button>
+            <div class="status-display">
+                <div id="threats-status" class="status-text">THREATS: 0</div>
+                <div id="defense-status" class="status-text">DEFENSES: 3/3</div>
+            </div>
+        </div>
+    </div>
+    
+
+    <script>
+        const canvas = document.getElementById('simulationCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const launchBtn = document.getElementById('launchTargetBtn');
+        const threatsStatusEl = document.getElementById('threats-status');
+        const defenseStatusEl = document.getElementById('defense-status');
+        const successRateEl = document.getElementById('success-rate');
+
+        let canvasWidth, canvasHeight;
+
+        // --- Simulation Objects & State ---
+        const projectiles = [];
+        const targets = [];
+        const particles = [];
+        const turrets = [];
+        const effects = []; 
+        const projectileSpeed = 10; 
+        const gravity = 0.03; 
+        
+        let timeScale = 1;
+        let slowMoEndTime = 0;
+        
+        let backgroundCanvas;
+
+        let missilesEngaged = 0;
+        let missilesDestroyed = 0;
+
+        // --- Classes ---
+        class Turret {
+            constructor(x, y, minAngle, maxAngle) {
+                this.x = x;
+                this.y = y;
+                this.barrelLength = 30;
+                this.barrelWidth = 4;
+                this.baseRadius = 15;
+                this.angle = -Math.PI / 2;
+                this.rotationSpeed = 0.18;
+                this.range = 2000;
+                this.currentTarget = null;
+                this.status = 'STANDBY';
+                this.minAngle = minAngle;
+                this.maxAngle = maxAngle;
+            }
+
+            update() {
+                if (this.currentTarget && (this.currentTarget.health <= 0 || this.currentTarget.y >= this.y)) {
+                    this.currentTarget.targetedBy = null;
+                    this.currentTarget = null;
+                    this.status = 'STANDBY';
+                }
+
+                if (this.currentTarget) {
+                    this.trackAndEngage();
+                } else {
+                    this.status = 'STANDBY';
+                }
+            }
+
+            trackAndEngage() {
+                const target = this.currentTarget;
+                const dx = target.x - this.x;
+                const dy = target.y - this.y;
+                
+                let interceptTime = Math.hypot(dx, dy) / projectileSpeed;
+
+                for(let i=0; i<5; i++) { 
+                    const futureX = target.x + target.velocity.x * interceptTime;
+                    const futureY = target.y + target.velocity.y * interceptTime + 0.5 * gravity * interceptTime**2;
+                    interceptTime = Math.hypot(futureX - this.x, futureY - this.y) / projectileSpeed;
+                }
+                
+                const interceptX = target.x + target.velocity.x * interceptTime;
+                const interceptY = target.y + target.velocity.y * interceptTime + 0.5 * gravity * interceptTime**2;
+                let targetAngle = Math.atan2(interceptY - this.y, interceptX - this.x);
+                
+                // ** FIX: Removed the individual hit probability assessment. Turrets now follow orders. **
+                
+                const clampedAngle = Math.max(this.minAngle, Math.min(this.maxAngle, targetAngle));
+                
+                let angleDiff = clampedAngle - this.angle;
+                while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+                while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+
+                this.angle += Math.max(-this.rotationSpeed, Math.min(this.rotationSpeed, angleDiff)) * timeScale;
+
+                const isAimed = Math.abs(angleDiff) < 0.1;
+                const canEngage = targetAngle === clampedAngle;
+                const dist = Math.hypot(dx, dy);
+
+                if (isAimed && canEngage && dist < this.range) {
+                    this.status = 'ENGAGING';
+                    this.fireProjectile();
+                } else {
+                    this.status = 'TRACKING';
+                }
+            }
+
+            fireProjectile() {
+                const barrelEndX = this.x + Math.cos(this.angle) * this.barrelLength;
+                const barrelEndY = this.y + Math.sin(this.angle) * this.barrelLength;
+                projectiles.push(new Projectile(barrelEndX, barrelEndY, this.angle));
+            }
+
+            draw() {
+                ctx.fillStyle = '#444';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y + 3, this.baseRadius, Math.PI, 0);
+                ctx.fill();
+                ctx.fillStyle = '#666';
+                ctx.fillRect(this.x - this.baseRadius, this.y + 3, this.baseRadius * 2, 6);
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.fillStyle = '#888';
+                ctx.fillRect(0, -this.barrelWidth / 2, this.barrelLength, this.barrelWidth);
+                ctx.restore();
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, angle) {
+                this.x = x;
+                this.y = y;
+                this.radius = 1;
+                this.velocity = { x: Math.cos(angle) * projectileSpeed, y: Math.sin(angle) * projectileSpeed };
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffff00';
+                ctx.fill();
+            }
+            update() { 
+                this.velocity.x *= 0.999;
+                this.velocity.y *= 0.999;
+                this.x += this.velocity.x * timeScale; 
+                this.y += this.velocity.y * timeScale;
+            }
+        }
+
+        class Target {
+            constructor() {
+                this.radius = 5;
+                const speedX = 4 + Math.random() * 2;
+                this.health = 10;
+                this.targetedBy = null;
+                
+                const initialVy = Math.random() * 1 + 0.5; 
+                this.y = Math.random() * (canvasHeight * 0.2);
+
+                if (Math.random() < 0.5) {
+                    this.x = -this.radius;
+                    this.velocity = { x: speedX, y: initialVy };
+                } else {
+                    this.x = canvasWidth + this.radius;
+                    this.velocity = { x: -speedX, y: initialVy };
+                }
+            }
+
+            draw() {
+                const angle = Math.atan2(this.velocity.y, this.velocity.x);
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(angle);
+                
+                ctx.fillStyle = '#ddd';
+                ctx.fillRect(-this.radius * 1.5, -this.radius / 2, this.radius * 3, this.radius);
+                
+                ctx.fillStyle = '#ff3300';
+                ctx.beginPath();
+                ctx.moveTo(this.radius * 1.5, 0);
+                ctx.lineTo(this.radius * 0.5, -this.radius / 2);
+                ctx.lineTo(this.radius * 0.5, this.radius / 2);
+                ctx.fill();
+                ctx.restore();
+
+                if (this.targetedBy) {
+                    ctx.strokeStyle = `rgba(0, 255, 0, ${0.5 + Math.sin(Date.now() / 100) * 0.5})`;
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(this.x - 12, this.y - 12, 24, 24);
+                }
+            }
+            update() {
+                this.velocity.y += gravity * timeScale;
+                this.x += this.velocity.x * timeScale;
+                this.y += this.velocity.y * timeScale;
+                
+                const trailX = this.x - this.velocity.x * 2;
+                const trailY = this.y - this.velocity.y * 2;
+                particles.push(new Particle(trailX, trailY, 1.5, `hsl(${Math.random() * 60}, 100%, 50%)`, {x: (Math.random() - 0.5) * 0.5 - this.velocity.x/4, y: (Math.random() - 0.5) * 2 - this.velocity.y/4}));
+            }
+        }
+        
+        class Particle {
+            constructor(x, y, radius, color, velocity) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.velocity = velocity;
+                this.alpha = 1;
+                this.decay = Math.random() * 0.02 + 0.02;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+            update() {
+                this.x += this.velocity.x * timeScale;
+                this.y += this.velocity.y * timeScale;
+                this.alpha -= this.decay * timeScale;
+            }
+        }
+
+        class Shockwave {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 120;
+                this.alpha = 0.8;
+                this.lineWidth = 8;
+            }
+            update() {
+                this.radius += 2.5 * timeScale;
+                if (this.radius > this.maxRadius) this.radius = this.maxRadius;
+                this.alpha -= 0.02 * timeScale;
+                this.lineWidth -= 0.15 * timeScale;
+            }
+            draw() {
+                if (this.alpha <= 0 || this.lineWidth <= 0) return;
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 255, 224, ${this.alpha})`;
+                ctx.lineWidth = this.lineWidth;
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        function createExplosion(x, y) {
+            slowMoEndTime = Date.now() + 400;
+            effects.push(new Shockwave(x, y));
+
+            for (let i = 0; i < 20; i++) {
+                const radius = Math.random() * 5 + 1;
+                const color = `rgba(255, 255, 200, ${Math.random() * 0.5 + 0.5})`;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 4 + 1;
+                const velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+                particles.push(new Particle(x, y, radius, color, velocity));
+            }
+            for (let i = 0; i < 40; i++) {
+                const radius = Math.random() * 2 + 1;
+                const color = `hsl(${Math.random() * 60}, 100%, 50%)`;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 6 + 2;
+                const velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+                particles.push(new Particle(x, y, radius, color, velocity));
+            }
+        }
+
+        function assignTargets() {
+            const idleTurrets = turrets.filter(t => t.status === 'STANDBY');
+            if (idleTurrets.length === 0) return;
+
+            const availableTargets = targets.filter(t => !t.targetedBy && t.y < canvasHeight);
+            
+            availableTargets.forEach(target => {
+                const a = 0.5 * gravity;
+                const b = target.velocity.y;
+                const c = target.y - canvasHeight;
+                const discriminant = b*b - 4*a*c;
+                target.timeToGround = (discriminant >= 0) ? (-b + Math.sqrt(discriminant)) / (2*a) : Infinity;
+            });
+
+            availableTargets.sort((a, b) => a.timeToGround - b.timeToGround);
+
+            for (const target of availableTargets) {
+                let bestTurret = null;
+                let minEngagementCost = Infinity;
+                
+                for (const turret of idleTurrets) {
+                    if (turret.currentTarget) continue;
+                    
+                    const targetAngle = Math.atan2(target.y - turret.y, target.x - turret.x);
+                    
+                    if (targetAngle >= turret.minAngle && targetAngle <= turret.maxAngle) {
+                        const angleDiff = Math.abs(targetAngle - turret.angle);
+                        const timeToAim = angleDiff / turret.rotationSpeed;
+                        const cost = timeToAim;
+
+                        if (cost < minEngagementCost) {
+                            minEngagementCost = cost;
+                            bestTurret = turret;
+                        }
+                    }
+                }
+
+                if (bestTurret) {
+                    bestTurret.currentTarget = target;
+                    target.targetedBy = bestTurret;
+                    bestTurret.status = 'TRACKING';
+                    const index = idleTurrets.indexOf(bestTurret);
+                    if (index > -1) {
+                        idleTurrets.splice(index, 1);
+                    }
+                }
+                
+                if (idleTurrets.length === 0) break;
+            }
+        }
+
+        function createOrUpdateBackground() {
+            backgroundCanvas = document.createElement('canvas');
+            backgroundCanvas.width = canvasWidth;
+            backgroundCanvas.height = canvasHeight;
+            const bgCtx = backgroundCanvas.getContext('2d');
+
+            const bgGradient = bgCtx.createLinearGradient(0, 0, 0, canvasHeight);
+            bgGradient.addColorStop(0, '#010A10');
+            bgGradient.addColorStop(0.5, '#0a142a');
+            bgGradient.addColorStop(1, '#1a1a3a');
+            bgCtx.fillStyle = bgGradient;
+            bgCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+            
+            const groundLevel = canvasHeight;
+
+            bgCtx.fillStyle = '#ffffff';
+            for (let i = 0; i < 300; i++) {
+                const x = Math.random() * canvasWidth;
+                const y = Math.random() * (groundLevel * 0.95);
+                const alpha = Math.random() * 0.5 + 0.1;
+                bgCtx.globalAlpha = alpha;
+                bgCtx.fillRect(x, y, 1, 1);
+            }
+            bgCtx.globalAlpha = 1;
+
+            bgCtx.fillStyle = '#08090d';
+            bgCtx.strokeStyle = '#000';
+            bgCtx.lineWidth = 2;
+            let currentX = -50;
+            while (currentX < canvasWidth + 50) {
+                const h = Math.pow(Math.random(), 2) * 100 + 10;
+                const w = Math.random() * 25 + 10;
+                bgCtx.fillRect(currentX, groundLevel - h, w, h);
+                bgCtx.strokeRect(currentX, groundLevel - h, w, h);
+                currentX += w - Math.random() * 3;
+            }
+        }
+
+        function resizeCanvas() {
+            canvasWidth = window.innerWidth;
+            canvasHeight = window.innerHeight;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            
+            const groundLevel = canvasHeight;
+            turrets.length = 0;
+            const arc = 2.618; 
+            turrets.push(new Turret(canvasWidth * 0.35, groundLevel, -Math.PI, -Math.PI + arc));
+            turrets.push(new Turret(canvasWidth * 0.50, groundLevel, -Math.PI + (Math.PI - arc)/2, - (Math.PI - arc)/2));
+            turrets.push(new Turret(canvasWidth * 0.65, groundLevel, -arc, 0));
+
+            createOrUpdateBackground();
+        }
+
+        function handleCollisions() {
+            for (let pIndex = projectiles.length - 1; pIndex >= 0; pIndex--) {
+                for (let tIndex = targets.length - 1; tIndex >= 0; tIndex--) {
+                    const p = projectiles[pIndex];
+                    const t = targets[tIndex];
+                    if (!p || !t) continue;
+                    const dist = Math.hypot(p.x - t.x, p.y - t.y);
+                    if (dist - t.radius - p.radius < 1) {
+                        projectiles.splice(pIndex, 1);
+                        t.health--;
+                        particles.push(new Particle(p.x, p.y, 1.5, '#fff', {x:0, y:0}));
+                        if (t.health <= 0) {
+                            createExplosion(t.x, t.y);
+                            if (t.targetedBy) t.targetedBy.currentTarget = null;
+                            targets.splice(tIndex, 1);
+                            missilesDestroyed++; 
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        function updateUI() {
+            threatsStatusEl.textContent = `THREATS: ${targets.length}`;
+            const activeTurrets = turrets.filter(t => t.status !== 'STANDBY').length;
+            defenseStatusEl.textContent = `DEFENSES: ${activeTurrets}/${turrets.length}`;
+            if (missilesEngaged > 0) {
+                const rate = (missilesDestroyed / missilesEngaged) * 100;
+                successRateEl.textContent = `KILL %: ${rate.toFixed(1)}`;
+            } else {
+                successRateEl.textContent = `KILL %: N/A`;
+            }
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            timeScale = (Date.now() < slowMoEndTime) ? 0.2 : 1;
+
+            if (backgroundCanvas) {
+                ctx.drawImage(backgroundCanvas, 0, 0);
+            }
+            
+            assignTargets();
+
+            [...turrets, ...targets, ...projectiles, ...particles, ...effects].forEach(obj => {
+                if(obj.update) obj.update();
+                if(obj.draw) obj.draw();
+            });
+            
+            for (let i = targets.length - 1; i >= 0; i--) {
+                const target = targets[i];
+                if (target.y >= canvasHeight) {
+                    createExplosion(target.x, canvasHeight);
+                    if (target.targetedBy) {
+                        target.targetedBy.currentTarget = null;
+                    }
+                    targets.splice(i, 1);
+                }
+            }
+            
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                if (p.x < 0 || p.x > canvasWidth || p.y < 0 || p.y > canvasHeight) projectiles.splice(i, 1);
+            }
+            for (let i = particles.length - 1; i >= 0; i--) {
+                if (particles[i].alpha <= 0) particles.splice(i, 1);
+            }
+            for (let i = effects.length - 1; i >= 0; i--) {
+                if (effects[i].alpha <= 0) effects.splice(i, 1);
+            }
+
+            handleCollisions();
+            updateUI();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        launchBtn.addEventListener('click', () => {
+            if (targets.length < 20) {
+                const salvoSize = 3;
+                for(let i=0; i<salvoSize; i++) {
+                    setTimeout(() => {
+                        targets.push(new Target());
+                        missilesEngaged++; 
+                    }, i * 400);
+                }
+            }
+        });
+        
+        resizeCanvas();
+        animate();
+    </script>
+</body>
+</html>
