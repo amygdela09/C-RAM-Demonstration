@@ -94,3 +94,6 @@ How to Run Locally
     Open the index.html file in any modern web browser.
 
     Click the "LAUNCH INCOMING" button to begin the simulation.
+
+License:
+    MIT License. Check the LICENSE file for details.
